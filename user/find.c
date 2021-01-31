@@ -3,6 +3,21 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+int ismatch(char*s,char*p){
+  int advance = 1 ;//advance p
+  if(*p == 0)
+    return *s == 0;
+  if(*p && *(p+1) && *(p+1)=='*'){
+    if(ismatch(s,p+2))
+      return 1;
+    advance = 0;
+  }
+  if((*s&&*p=='.')||*s==*p)
+    return ismatch(s+1,p+advance);
+  return 0;
+}
+
+
 char buf[512];
 char*
 fmtname(char *path)
@@ -44,7 +59,7 @@ find(char *path,char*name)
 
   switch(st.type){
   case T_FILE:
-    if(strcmp(fmtname(path),name)==0){
+    if(ismatch(fmtname(path),name)!=0){
         printf("%s\n",path);
     }
     break;
