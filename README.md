@@ -45,5 +45,12 @@ riscv64-softmmu. Once they are installed, and in your shell
 search path, you can run "make qemu".
 
 
-
+- [x] sleep
+- [x] pingpong
+- [x] primes
+- [x] find
+- [x] xargs
+- [x] time (optional)
+- [x] regular expressions in find (optional)
+- [ ] modify shell (optional)
 
