@@ -78,3 +78,40 @@ add a filed in proc to store the mask passed by the user
 * step 5
 modify `syscall()` to print the message
 
+
+
+### Sysinfo
+* step 1
+Add `$U/_sysinfotest` to UPROGS in Makefile
+
+* step 2
+add prototype 
+
+* step 3
+add `cal_freemem` function in `kalloc.c`
+
+```C
+uint64 cal_freemem(){
+  struct run *r;
+  uint64 freemem=0;
+  r = kmem.freelist;
+  acquire(&kmem.lock);
+  while(r){
+    freemem += PGSIZE;
+    r = r->next;
+  }
+  release(&kmem.lock);
+  return freemem;
+}
+```
+
+* step 4
+add `call_freemem` and `call_nproc` in `defs.h`
+
+* step 5
+copy out and need roubustness
+use local variable instead of pointer to withdraw the value passed by caller.
+
+
+
+
