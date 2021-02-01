@@ -52,3 +52,29 @@ search path, you can run "make qemu".
 - [ ] Compute the load average and export it throygh sysinfo
 
 
+
+### System call tracing ✅
+
+The step of system call:
+
+ecall -> trampoline -> usertrap() -> system call
+
+* step 1
+Add `$U/_trace` to UPROGS in Makefile
+
+* step 2
+add a prototype to `user.h`
+
+```C
+int trace(int);
+```
+
+* step 3
+add a stub to `usys.pl` and system number to `syscall.h`
+
+* step 4
+add a filed in proc to store the mask passed by the user
+
+* step 5
+modify `syscall()` to print the message
+
