@@ -133,12 +133,15 @@ kvmpa(uint64 va)
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
+  //pte = walk(kernel_pagetable,va,0);
   pte = walk(myproc()->kpagetable, va, 0);
   if(pte == 0){
+    
     printf("!va is %p\n",va);
     panic("kvmpa");
   }
   if((*pte & PTE_V) == 0){
+    printf("the process is %p",myproc()->kstack);
      printf("---va is %p\n",va);
      panic("kvmpa");
   }

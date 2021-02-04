@@ -32,7 +32,7 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-      //printf("----va:%p\n",KSTACK((int) (p - proc)));
+      printf("----va:%p\n",KSTACK((int) (p - proc)));
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.

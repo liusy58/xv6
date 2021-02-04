@@ -80,8 +80,30 @@ hart 1 starting
 ```
 一开中断就死掉了，肯定是Trapoline的问题。
 
-原因在于我没w_sapt
+原因在于我没w_sapt的参数传递错误。
 
+之前我一直以为kvmpa 中panic的那个地址是某个kStack的首地址，看错了位，导致我de了一下午的bug。唉，眼瞎眼瞎。
 
+panic kvmpa
 
+```
+uint64
+kvmpa(uint64 va)
+{
+  uint64 off = va % PGSIZE;
+  pte_t *pte;
+  uint64 pa;
+  pte = walk(myproc()->kpagetable, va, 0);
+  if(pte == 0){
+    printf("!va is %p\n",va);
+    panic("kvmpa");
+  }
+  if((*pte & PTE_V) == 0){
+     printf("---va is %p\n",va);
+     panic("kvmpa");
+  }
+  pa = PTE2PA(*pte);
+  return pa+off;
+}
+```
 
