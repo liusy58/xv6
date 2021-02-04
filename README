@@ -43,3 +43,45 @@ You will need a RISC-V "newlib" tool chain from
 https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
 riscv64-softmmu. Once they are installed, and in your shell
 search path, you can run "make qemu".
+
+
+
+
+
+- [ ] A kernel page per process
+- [ ] Simplify `copyin`/`copyinstr`
+
+
+记录一些问题：
+之前linux的用户页表中既有自己用户代码的映射也有内核代码的映射，这样做主要是为了提高效率，因为合成一个表之后就减少了一次映射，因为如果是两个表的话，在进行系统调用的时候，那么我们用户指针首先需要使用用户页表将这个虚拟地址转化成物理地址，然后陷入内核，再用内核页表进行映射，这样会导致cache和TLB的刷新，效率很低，所以linux采用了将用户页表和内核页表合成一个页表。但是最近出现了一些问题，一般来说linux内核页表的映射用户正常是用不了的，因为 U位设为了0，但是利用CPU缓存的一些漏洞 可以获取内核页表映射结果。
+所以会存在我们的lab2。这个实验是处于一种中间状态吧，它分成了两张表，解决了meltdown，但是为了效率，他又只进行翻译一次。
+
+简单点来说就是要安全就得两张表，要效率就得一张表。
+
+A kernel page per process
+--------
+--------
+
+* Add a field to `struct proc` for the process's kernel page table
+* 
+
+
+
+
+
+bug 1 一进来就死掉了
+
+```C
+xv6 kernel is booting
+
+
+hart 2 starting
+hart 1 starting
+```
+一开中断就死掉了，肯定是Trapoline的问题。
+
+原因在于我没w_sapt
+
+
+
+

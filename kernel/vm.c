@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -131,12 +133,15 @@ kvmpa(uint64 va)
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
-  
-  pte = walk(kernel_pagetable, va, 0);
-  if(pte == 0)
+  pte = walk(myproc()->kpagetable, va, 0);
+  if(pte == 0){
+    printf("!va is %p\n",va);
     panic("kvmpa");
-  if((*pte & PTE_V) == 0)
-    panic("kvmpa");
+  }
+  if((*pte & PTE_V) == 0){
+     printf("---va is %p\n",va);
+     panic("kvmpa");
+  }
   pa = PTE2PA(*pte);
   return pa+off;
 }
@@ -148,6 +153,7 @@ kvmpa(uint64 va)
 int
 mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 {
+  //printf("in mappages va is %p\n",va);
   uint64 a, last;
   pte_t *pte;
 
@@ -278,6 +284,7 @@ freewalk(pagetable_t pagetable)
   for(int i = 0; i < 512; i++){
     pte_t pte = pagetable[i];
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      //判断是不是最后一层
       // this PTE points to a lower-level page table.
       uint64 child = PTE2PA(pte);
       freewalk((pagetable_t)child);
@@ -439,4 +446,27 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void vmprint_help(pagetable_t pagetable,int depth){
+  if(depth>3)
+    return;
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      for(int j=1;j<=depth;++j){
+        printf("..%s",j==depth?"":" ");
+      }
+      printf("%d: pte %p pa %p\n",i,pte,child);
+
+      vmprint_help((pagetable_t)child,depth+1);
+    } 
+  }
+}
+
+void vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+  vmprint_help(pagetable,1);
 }
