@@ -85,6 +85,10 @@ hart 1 starting
 之前我一直以为kvmpa 中panic的那个地址是某个kStack的首地址，看错了位，导致我de了一下午的bug。唉，眼瞎眼瞎。
 
 panic kvmpa
+----
+----
+
+
 
 ```
 uint64
@@ -106,4 +110,14 @@ kvmpa(uint64 va)
   return pa+off;
 }
 ```
+
+uvmunmap 是将虚拟地址对应的物理地址取消，
+
+
+
+test reparent2: scause 0x000000000000000c
+sepc=0x0000000080005f90 stval=0x0000000080005f90
+panic: kerneltrap
+----
+----
 

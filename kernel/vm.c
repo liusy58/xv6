@@ -293,6 +293,7 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
+      printf("pte is %p\n",pte);
       panic("freewalk: leaf");
     }
   }
@@ -472,4 +473,22 @@ void vmprint_help(pagetable_t pagetable,int depth){
 void vmprint(pagetable_t pagetable){
   printf("page table %p\n",pagetable);
   vmprint_help(pagetable,1);
+}
+
+
+void
+kvmfree(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      //判断是不是最后一层
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      kvmfree((pagetable_t)child);
+      pagetable[i] = 0;
+    }
+  }
+  kfree((void*)pagetable);
 }

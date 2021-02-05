@@ -23,6 +23,7 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -32,7 +33,7 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-      printf("----va:%p\n",KSTACK((int) (p - proc)));
+ //     printf("----va:%p\n",KSTACK((int) (p - proc)));
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
@@ -167,7 +168,10 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  //printf("successfully proc_freepagetable\n");
   p->pagetable = 0;
+  if(p->kpagetable)
+    proc_freekpagetable(p->kpagetable);
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -276,6 +280,28 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
 }
+
+// Free a process's page table, and free the
+// physical memory it refers to.
+void
+proc_freekpagetable(pagetable_t pagetable)
+{
+
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+  uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, UART0, PGROUNDUP(PGSIZE)/PGSIZE,0);
+  uvmunmap(pagetable, VIRTIO0, PGROUNDUP(PGSIZE)/PGSIZE,0);
+  uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE,0);
+  uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE,0);
+  uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE,0);
+  uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE,0);
+  //printf("here is ok\n");
+  kvmfree(pagetable);
+
+}
+
+
+
 
 // a user program that calls exec("/init")
 // od -t xC initcode
