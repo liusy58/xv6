@@ -300,14 +300,14 @@ void
 proc_freekpagetable(pagetable_t pagetable)
 {
 
-  // uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-  // uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  // uvmunmap(pagetable, UART0, PGROUNDUP(PGSIZE)/PGSIZE,0);
-  // uvmunmap(pagetable, VIRTIO0, PGROUNDUP(PGSIZE)/PGSIZE,0);
-  // uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE,0);
-  // uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE,0);
-  // uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE,0);
-  // uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE,0);
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+  uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, UART0, PGROUNDUP(PGSIZE)/PGSIZE,0);
+  uvmunmap(pagetable, VIRTIO0, PGROUNDUP(PGSIZE)/PGSIZE,0);
+  uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE,0);
+  uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE,0);
+  uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE,0);
+  uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE,0);
   //printf("here is ok\n");
   kvmfree(pagetable);
 }

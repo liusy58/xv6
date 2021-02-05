@@ -488,9 +488,6 @@ kvmfree(pagetable_t pagetable)
       uint64 child = PTE2PA(pte);
       kvmfree((pagetable_t)child);
       pagetable[i] = 0;
-    }else if(pte & PTE_V){
-      if(PTE2PA(pte)<=0x80005fb0&&PTE2PA(pte)+PGSIZE>=0x80005fb0)
-        printf("in kvmfree va is [ %p --  %p ]\n",PTE2PA(pte),PTE2PA(pte)+PGSIZE);
     }
   }
   kfree((void*)pagetable);

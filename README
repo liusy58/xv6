@@ -129,8 +129,7 @@ sepc=0x0000000080005f90 stval=0x0000000080005f90
 panic: kerneltrap
 ----
 ----
-
-80006010
+不应该
 
 
 因为我提前把Trapoline给unmap了。
