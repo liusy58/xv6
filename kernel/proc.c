@@ -165,6 +165,10 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+  if(p->kstack){
+    pte_t*pte=walk(p->kpagetable,p->kstack,0); 
+    kfree((void*)PTE2PA(*pte));
+  }
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -172,6 +176,7 @@ freeproc(struct proc *p)
   p->pagetable = 0;
   if(p->kpagetable)
     proc_freekpagetable(p->kpagetable);
+  p->kpagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -192,48 +197,56 @@ proc_kpagetable(struct proc *p)
   if(pagetable == 0)
     return 0;
   if(mappages(pagetable,UART0,PGSIZE,UART0,PTE_R | PTE_W)<0){
-      kfree(pagetable);
+      printf("error mapping:UART0\n");
+      kvmfree(pagetable);
       return 0;
   }
   // virtio mmio disk interface
   if(mappages(pagetable,VIRTIO0,PGSIZE,VIRTIO0,PTE_R | PTE_W)<0){
-      kfree(pagetable);
+    printf("error mapping:VIRTIO0\n");
+      kvmfree(pagetable);
       return 0;
   }
 
   // // CLINT
   if(mappages(pagetable,CLINT,0x10000,CLINT,PTE_R | PTE_W)<0){
-      kfree(pagetable);
+    printf("error mapping:CLINT\n");
+      kvmfree(pagetable);
       return 0;
   }
 
   // // PLIC
   if(mappages(pagetable,PLIC,0x400000,PLIC,PTE_R | PTE_W)<0){
-      kfree(pagetable);
+    printf("error mapping:PLIC\n");
+      kvmfree(pagetable);
       return 0;
   }
 
 // map kernel text executable and read-only.
   if(mappages(pagetable,KERNBASE,(uint64)etext-KERNBASE,KERNBASE,PTE_R | PTE_X)<0){
-      kfree(pagetable);
+    printf("error mapping:KERNBASE\n");
+      kvmfree(pagetable);
       return 0;
   }
 
   // map kernel data and the physical RAM we'll make use of.
   if(mappages(pagetable,(uint64)etext,PHYSTOP-(uint64)etext, (uint64)etext,PTE_R | PTE_W)<0){
-      kfree(pagetable);
+    printf("error mapping:etext\n");
+      kvmfree(pagetable);
       return 0;
   }
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
   if(mappages(pagetable,TRAMPOLINE,PGSIZE, (uint64)trampoline,PTE_R | PTE_X)<0){
-      kfree(pagetable);
+    printf("error mapping:TRAMPOLINE\n");
+      kvmfree(pagetable);
       return 0;
   }
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
-    kfree(pagetable);
+    printf("error mapping:TRAPFRAME\n");
+    kvmfree(pagetable);
     return 0;
   }
   return pagetable;
@@ -287,17 +300,16 @@ void
 proc_freekpagetable(pagetable_t pagetable)
 {
 
-  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-  uvmunmap(pagetable, TRAPFRAME, 1, 0);
-  uvmunmap(pagetable, UART0, PGROUNDUP(PGSIZE)/PGSIZE,0);
-  uvmunmap(pagetable, VIRTIO0, PGROUNDUP(PGSIZE)/PGSIZE,0);
-  uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE,0);
-  uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE,0);
-  uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE,0);
-  uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE,0);
+  // uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+  // uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  // uvmunmap(pagetable, UART0, PGROUNDUP(PGSIZE)/PGSIZE,0);
+  // uvmunmap(pagetable, VIRTIO0, PGROUNDUP(PGSIZE)/PGSIZE,0);
+  // uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE,0);
+  // uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE,0);
+  // uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE,0);
+  // uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE,0);
   //printf("here is ok\n");
   kvmfree(pagetable);
-
 }
 
 

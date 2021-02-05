@@ -114,10 +114,26 @@ kvmpa(uint64 va)
 uvmunmap 是将虚拟地址对应的物理地址取消，
 
 
+```
+test sbrkbugs: usertrap(): unexpected scause 0x000000000000000c pid=3234
+            sepc=0x000000000000541c stval=0x000000000000541c
+usertrap(): unexpected scause 0x000000000000000c pid=3235
+            sepc=0x000000000000541c stval=0x000000000000541c
+```
+检测系统在读取错的地址的时候是不是会到trap
+
+
 
 test reparent2: scause 0x000000000000000c
 sepc=0x0000000080005f90 stval=0x0000000080005f90
 panic: kerneltrap
 ----
 ----
+
+80006010
+
+
+因为我提前把Trapoline给unmap了。
+
+sbrkfail -> 我没有把Kstack给释放掉
 
