@@ -136,3 +136,18 @@ panic: kerneltrap
 
 sbrkfail -> 我没有把Kstack给释放掉
 
+
+
+
+### part3
+
+首先需要创建一个可以拷贝用户页表的的函数
+
+
+scause 0x000000000000000d
+sepc=0x0000000080000d98 stval=0x000000000000002
+panic kerneltrap
+
+
+    *kpte = PA2PTE(pa) | flags;
+

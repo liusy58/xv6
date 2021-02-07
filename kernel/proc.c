@@ -348,7 +348,10 @@ userinit(void)
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
+  // printf("sz is %d\n",p->sz);
+  //printf("from userinitin copy_user2kernel sz is %d\n",p->sz);
 
+  copy_user2kernel(p->pagetable,p->kpagetable,p->sz);
   p->state = RUNNABLE;
 
   release(&p->lock);
@@ -364,6 +367,9 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if(sz+n>PLIC){
+      return 0;
+    }
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
@@ -395,7 +401,6 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
   np->parent = p;
 
   // copy saved user registers.
@@ -415,7 +420,8 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
-
+  //printf("from fork copy_user2kernel sz is %d\n",np->sz);
+  copy_user2kernel(np->pagetable,np->kpagetable,np->sz);
   release(&np->lock);
 
   return pid;

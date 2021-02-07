@@ -184,7 +184,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 void            vmprint(pagetable_t);
 void            kvmfree(pagetable_t);
 pte_t * walk(pagetable_t , uint64 , int );
-
+void            copy_user2kernel(pagetable_t ,pagetable_t ,uint64 );
 // plic.c
 void            plicinit(void);
 void            plicinithart(void);
@@ -200,6 +200,11 @@ void            virtio_disk_intr(void);
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
 
+// vmcopyin.c
+int
+copyin_new(pagetable_t, char*, uint64, uint64);
+int
+copyinstr_new(pagetable_t , char *, uint64 , uint64 );
 
 // stats.c
 void            statsinit(void);
