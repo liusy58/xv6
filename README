@@ -43,3 +43,9 @@ You will need a RISC-V "newlib" tool chain from
 https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
 riscv64-softmmu. Once they are installed, and in your shell
 search path, you can run "make qemu".
+
+
+为什么需要保存当前的trapframe，因为如果我们切换到了handler之后还会发生trap，这个时候trapframe就会改变.
+
+ I add one more trapframe to save all the registers, but this implementation will not pass the usertests
+ --保存了的话，你如果往kernel里面加了东西,可能会丢，因为内核页表这些东西是共享的。

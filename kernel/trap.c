@@ -79,7 +79,7 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2){
     p->now_ticks+=1;
-    if(p->now_ticks>=p->ticks&&!p->is_sigalarm){
+    if(p->ticks>0&&p->now_ticks>=p->ticks&&!p->is_sigalarm){
       p->now_ticks = 0;
       p->is_sigalarm=1;
       *(p->trapframe_copy)=*(p->trapframe);
