@@ -1,18 +1,49 @@
-
-diff --git a/Makefile b/Makefile
-index 1fa367e..a74296b 100644
---- a/Makefile
-+++ b/Makefile
-@@ -175,6 +175,7 @@ UPROGS=\
- 	$U/_grind\
- 	$U/_wc\
- 	$U/_zombie\
-+	$U/_alarmtest\
- 
- 
- 
+diff --git a/.gdb_history b/.gdb_history
+new file mode 100644
+index 0000000..7a00e99
+--- /dev/null
++++ b/.gdb_history
+@@ -0,0 +1,3 @@
++b sys_sigreturn
++c
++n
+diff --git a/kernel/defs.h b/kernel/defs.h
+index 4b9bbc0..db684da 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -80,7 +80,7 @@ int             pipewrite(struct pipe*, uint64, int);
+ void            printf(char*, ...);
+ void            panic(char*) __attribute__((noreturn));
+ void            printfinit(void);
+-
++void            backtrace();
+ // proc.c
+ int             cpuid(void);
+ void            exit(int);
+diff --git a/kernel/printf.c b/kernel/printf.c
+index e1347de..7ee8e6d 100644
+--- a/kernel/printf.c
++++ b/kernel/printf.c
+@@ -132,3 +132,17 @@ printfinit(void)
+   initlock(&pr.lock, "pr");
+   pr.locking = 1;
+ }
++
++void backtrace(){
++  printf("backtrace:\n");
++  uint64 fp = r_fp();
++  uint64 stack_bottom = PGROUNDUP(fp);
++  // uint64 stack_top = PGROUNDDOWN(fp);
++  //printf("the stack bottom is %p\n",stack_bottom);
++  while(fp<stack_bottom){
++    //printf("fp : %p\n",fp);
++    uint64 return_address = *(uint64*)(fp-8);
++    printf("%p\n",return_address);
++    fp = *(uint64*)(fp-16);
++  }
++}
 diff --git a/kernel/proc.c b/kernel/proc.c
-index dab1e1d..d7f2551 100644
+index dab1e1d..69fcd61 100644
 --- a/kernel/proc.c
 +++ b/kernel/proc.c
 @@ -112,7 +112,10 @@ found:
@@ -39,6 +70,15 @@ index dab1e1d..d7f2551 100644
    return p;
  }
  
+@@ -138,6 +144,8 @@ freeproc(struct proc *p)
+ {
+   if(p->trapframe)
+     kfree((void*)p->trapframe);
++  if(p->trapframe_copy)
++    kfree((void*)p->trapframe_copy);
+   p->trapframe = 0;
+   if(p->pagetable)
+     proc_freepagetable(p->pagetable, p->sz);
 diff --git a/kernel/proc.h b/kernel/proc.h
 index 9c16ea7..c0c10cc 100644
 --- a/kernel/proc.h
@@ -53,6 +93,26 @@ index 9c16ea7..c0c10cc 100644
 +  uint64 handler;
 +  struct trapframe *trapframe_copy;
  };
+diff --git a/kernel/riscv.h b/kernel/riscv.h
+index 0aec003..326e984 100644
+--- a/kernel/riscv.h
++++ b/kernel/riscv.h
+@@ -320,6 +320,15 @@ sfence_vma()
+ }
+ 
+ 
++
++static inline uint64
++r_fp()
++{
++  uint64 x;
++  asm volatile("mv %0, s0" : "=r" (x) );
++  return x;
++}
++
+ #define PGSIZE 4096 // bytes per page
+ #define PGSHIFT 12  // bits of offset within a page
+ 
 diff --git a/kernel/syscall.c b/kernel/syscall.c
 index c1b3670..de39fcf 100644
 --- a/kernel/syscall.c
@@ -89,16 +149,36 @@ index bc5f356..5684d4b 100644
 +#define SYS_sigreturn  23
 \ No newline at end of file
 diff --git a/kernel/sysproc.c b/kernel/sysproc.c
-index 96b23a1..04a030a 100644
+index e8bcda9..0a977c3 100644
 --- a/kernel/sysproc.c
 +++ b/kernel/sysproc.c
-@@ -95,3 +95,23 @@ sys_uptime(void)
+@@ -57,7 +57,7 @@ sys_sleep(void)
+ {
+   int n;
+   uint ticks0;
+-
++  backtrace();
+   if(argint(0, &n) < 0)
+     return -1;
+   acquire(&tickslock);
+@@ -95,3 +95,34 @@ sys_uptime(void)
    release(&tickslock);
    return xticks;
  }
++
++void restore(){
++  struct proc*p=myproc();
++
++  p->trapframe_copy->kernel_satp = p->trapframe->kernel_satp;
++  p->trapframe_copy->kernel_sp = p->trapframe->kernel_sp;
++  p->trapframe_copy->kernel_trap = p->trapframe->kernel_trap;
++  p->trapframe_copy->kernel_hartid = p->trapframe->kernel_hartid;
++  *(p->trapframe) = *(p->trapframe_copy);
++}
++
 +uint64 sys_sigreturn(void){
-+  myproc()->trapframe=myproc()->trapframe_copy;
-+  myproc()->now_ticks = 0;
++  restore();
++  myproc()->is_sigalarm = 0;
 +  return 0;
 +}
 +
@@ -108,9 +188,9 @@ index 96b23a1..04a030a 100644
 +  if(argint(0, &ticks) < 0)
 +    return -1;
 +  uint64 handler;
-+  if(argaddr(0, &handler) < 0)
++  if(argaddr(1, &handler) < 0)
 +    return -1;
-+  myproc()->is_sigalarm =1;
++  myproc()->is_sigalarm =0;
 +  myproc()->ticks = ticks;
 +  myproc()->now_ticks = 0;
 +  myproc()->handler = handler;
@@ -118,7 +198,7 @@ index 96b23a1..04a030a 100644
 +}
 \ No newline at end of file
 diff --git a/kernel/trap.c b/kernel/trap.c
-index a63249e..dd216f0 100644
+index a63249e..89f0f28 100644
 --- a/kernel/trap.c
 +++ b/kernel/trap.c
 @@ -10,7 +10,7 @@ struct spinlock tickslock;
@@ -130,27 +210,59 @@ index a63249e..dd216f0 100644
  // in kernelvec.S, calls kerneltrap().
  void kernelvec();
  
-@@ -77,8 +77,19 @@ usertrap(void)
+@@ -77,8 +77,16 @@ usertrap(void)
      exit(-1);
  
    // give up the CPU if this is a timer interrupt.
 -  if(which_dev == 2)
+-    yield();
 +  if(which_dev == 2){
-+    if(which_dev == 2){
-+      if(p->is_sigalarm){
-+        p->now_ticks+=1;
-+        if(p->now_ticks>=p->ticks){
-+          p->trapframe_copy=p->trapframe;
-+          p->trapframe->epc=p->handler;
-+          usertrapret();
-+      }
-+      }
-+  }
-     yield();
++    p->now_ticks+=1;
++    if(p->ticks>0&&p->now_ticks>=p->ticks&&!p->is_sigalarm){
++      p->now_ticks = 0;
++      p->is_sigalarm=1;
++      *(p->trapframe_copy)=*(p->trapframe);
++      p->trapframe->epc=p->handler;
++    }
++  yield();
 +  }
  
    usertrapret();
  }
+diff --git a/riscv-spec.pdf b/riscv-spec.pdf
+new file mode 100644
+index 0000000..8f555bf
+Binary files /dev/null and b/riscv-spec.pdf differ
+diff --git a/time.txt b/time.txt
+new file mode 100644
+index 0000000..bf0d87a
+--- /dev/null
++++ b/time.txt
+@@ -0,0 +1 @@
++4
+\ No newline at end of file
+diff --git a/user/alarmtest.c b/user/alarmtest.c
+index 38f09ff..00e2110 100644
+--- a/user/alarmtest.c
++++ b/user/alarmtest.c
+@@ -91,7 +91,7 @@ test1()
+     foo(i, &j);
+   }
+   if(count < 10){
+-    printf("\ntest1 failed: too few calls to the handler\n");
++    printf("\ntest1 failed: too few calls to the handler cout is %d\n",count);
+   } else if(i != j){
+     // the loop should have called foo() i times, and foo() should
+     // have incremented j once per call, so j should equal i.
+@@ -100,7 +100,7 @@ test1()
+     // occurred; another is that that registers may not be
+     // restored correctly, causing i or j or the address ofj
+     // to get an incorrect value.
+-    printf("\ntest1 failed: foo() executed fewer times than it was called\n");
++    printf("\ntest1 failed: foo() executed fewer times than it was called i=%d j=%d\n",i,j);
+   } else {
+     printf("test1 passed\n");
+   }
 diff --git a/user/user.h b/user/user.h
 index b71ecda..0fb38c1 100644
 --- a/user/user.h

@@ -98,6 +98,7 @@ sys_uptime(void)
 
 void restore(){
   struct proc*p=myproc();
+
   p->trapframe_copy->kernel_satp = p->trapframe->kernel_satp;
   p->trapframe_copy->kernel_sp = p->trapframe->kernel_sp;
   p->trapframe_copy->kernel_trap = p->trapframe->kernel_trap;
@@ -117,7 +118,7 @@ uint64 sys_sigalarm(void){
   if(argint(0, &ticks) < 0)
     return -1;
   uint64 handler;
-  if(argaddr(0, &handler) < 0)
+  if(argaddr(1, &handler) < 0)
     return -1;
   myproc()->is_sigalarm =0;
   myproc()->ticks = ticks;
