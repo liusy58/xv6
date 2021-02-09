@@ -91,7 +91,7 @@ test1()
     foo(i, &j);
   }
   if(count < 10){
-    printf("\ntest1 failed: too few calls to the handler\n");
+    printf("\ntest1 failed: too few calls to the handler cout is %d\n",count);
   } else if(i != j){
     // the loop should have called foo() i times, and foo() should
     // have incremented j once per call, so j should equal i.
@@ -100,7 +100,7 @@ test1()
     // occurred; another is that that registers may not be
     // restored correctly, causing i or j or the address ofj
     // to get an incorrect value.
-    printf("\ntest1 failed: foo() executed fewer times than it was called\n");
+    printf("\ntest1 failed: foo() executed fewer times than it was called i=%d j=%d\n",i,j);
   } else {
     printf("test1 passed\n");
   }

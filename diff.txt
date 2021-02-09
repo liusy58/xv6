@@ -1,0 +1,177 @@
+
+diff --git a/Makefile b/Makefile
+index 1fa367e..a74296b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -175,6 +175,7 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_alarmtest\
+ 
+ 
+ 
+diff --git a/kernel/proc.c b/kernel/proc.c
+index dab1e1d..d7f2551 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -112,7 +112,10 @@ found:
+     release(&p->lock);
+     return 0;
+   }
+-
++  if((p->trapframe_copy = (struct trapframe *)kalloc()) == 0){
++    release(&p->lock);
++    return 0;
++  }
+   // An empty user page table.
+   p->pagetable = proc_pagetable(p);
+   if(p->pagetable == 0){
+@@ -126,7 +129,10 @@ found:
+   memset(&p->context, 0, sizeof(p->context));
+   p->context.ra = (uint64)forkret;
+   p->context.sp = p->kstack + PGSIZE;
+-
++  p->is_sigalarm=0;
++  p->ticks=0;
++  p->now_ticks=0;
++  p->handler=0;
+   return p;
+ }
+ 
+diff --git a/kernel/proc.h b/kernel/proc.h
+index 9c16ea7..c0c10cc 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -103,4 +103,9 @@ struct proc {
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
++  int is_sigalarm;
++  int ticks;
++  int now_ticks;
++  uint64 handler;
++  struct trapframe *trapframe_copy;
+ };
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index c1b3670..de39fcf 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -104,6 +104,10 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_wait(void);
+ extern uint64 sys_write(void);
+ extern uint64 sys_uptime(void);
++extern uint64 sys_sigalarm(void);
++extern uint64 sys_sigreturn(void);
++
++
+ 
+ static uint64 (*syscalls[])(void) = {
+ [SYS_fork]    sys_fork,
+@@ -127,6 +131,8 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_sigalarm]   sys_sigalarm,
++[SYS_sigreturn]   sys_sigreturn,
+ };
+ 
+ void
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..5684d4b 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_sigalarm  22
++#define SYS_sigreturn  23
+\ No newline at end of file
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index 96b23a1..04a030a 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -95,3 +95,23 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++uint64 sys_sigreturn(void){
++  myproc()->trapframe=myproc()->trapframe_copy;
++  myproc()->now_ticks = 0;
++  return 0;
++}
++
++
++uint64 sys_sigalarm(void){
++  int ticks;
++  if(argint(0, &ticks) < 0)
++    return -1;
++  uint64 handler;
++  if(argaddr(0, &handler) < 0)
++    return -1;
++  myproc()->is_sigalarm =1;
++  myproc()->ticks = ticks;
++  myproc()->now_ticks = 0;
++  myproc()->handler = handler;
++  return 0; 
++}
+\ No newline at end of file
+diff --git a/kernel/trap.c b/kernel/trap.c
+index a63249e..dd216f0 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -10,7 +10,7 @@ struct spinlock tickslock;
+ uint ticks;
+ 
+ extern char trampoline[], uservec[], userret[];
+-
++extern struct proc proc[];
+ // in kernelvec.S, calls kerneltrap().
+ void kernelvec();
+ 
+@@ -77,8 +77,19 @@ usertrap(void)
+     exit(-1);
+ 
+   // give up the CPU if this is a timer interrupt.
+-  if(which_dev == 2)
++  if(which_dev == 2){
++    if(which_dev == 2){
++      if(p->is_sigalarm){
++        p->now_ticks+=1;
++        if(p->now_ticks>=p->ticks){
++          p->trapframe_copy=p->trapframe;
++          p->trapframe->epc=p->handler;
++          usertrapret();
++      }
++      }
++  }
+     yield();
++  }
+ 
+   usertrapret();
+ }
+diff --git a/user/user.h b/user/user.h
+index b71ecda..0fb38c1 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -23,7 +23,8 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+-
++int sigalarm(int ticks, void (*handler)());
++int sigreturn(void);
+ // ulib.c
+ int stat(const char*, struct stat*);
+ char* strcpy(char*, const char*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..508b3c5 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("sigreturn");
++entry("sigalarm");
