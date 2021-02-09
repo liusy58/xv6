@@ -1,7 +1,0 @@
-1. a2 contains 13 and a1 contains f(8)+1
-2. 
-3. 630
-4. 0x30
-5. depend on the a2 register
-
-
