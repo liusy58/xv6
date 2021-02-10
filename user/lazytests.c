@@ -52,6 +52,7 @@ sparse_memory_unmap(char *s)
     *(char **)i = i;
 
   for (i = prev_end + PGSIZE; i < new_end; i += PGSIZE * PGSIZE) {
+    //printf("in sparse_memory_unmap and i is %p\n",i);
     pid = fork();
     if (pid < 0) {
       printf("error forking\n");

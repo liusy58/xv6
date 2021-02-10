@@ -2250,7 +2250,8 @@ validatetest(char *s)
 {
   int hi;
   uint64 p;
-
+  uint64 sp =r_sp();
+  printf("the sp is %p\n",sp);
   hi = 1100*1024;
   for(p = 0; p <= (uint)hi; p += PGSIZE){
     // try to crash the kernel by passing in a bad string pointer
@@ -2396,8 +2397,10 @@ stacktest(char *s)
   pid = fork();
   if(pid == 0) {
     char *sp = (char *) r_sp();
+    printf("the sp is %p\n",sp);
     sp -= PGSIZE;
     // the *sp should cause a trap.
+    printf("the sp is %p\n",sp);
     printf("%s: stacktest: read below stack %p\n", *sp);
     exit(1);
   } else if(pid < 0){
@@ -2698,7 +2701,7 @@ main(int argc, char *argv[])
     {reparent2, "reparent2"},
     {pgbug, "pgbug" },
     {sbrkbugs, "sbrkbugs" },
-    // {badwrite, "badwrite" },
+    {badwrite, "badwrite" },
     {badarg, "badarg" },
     {reparent, "reparent" },
     {twochildren, "twochildren"},

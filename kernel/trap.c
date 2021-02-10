@@ -29,6 +29,35 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+
+int page_fault_handler(){
+
+  uint64 address = r_stval();
+
+  //printf("the r_stval address is %p\n",address);
+  uint64 sp = PGROUNDDOWN(myproc()->trapframe->sp);
+  //printf("sp down is %p\n",sp);
+  if(address > myproc()->sz ||(address<sp&&address>(sp-PGSIZE))){
+    printf("I'm here\n");
+    return -1;
+  }
+  address = PGROUNDDOWN(address);
+  char *mem;
+  mem = kalloc();
+  if(mem == 0){
+    return -1;
+  }
+  memset(mem, 0, PGSIZE);
+  if(mappages(myproc()->pagetable, address, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      kfree(mem);
+      return -1;
+  }
+  //printf("in page_fault_handler and works well\n");
+  return 0;
+
+}
+
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -68,9 +97,15 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    if(r_scause()==13||r_scause()==15){
+      if(page_fault_handler()!=0){
+        p->killed=1;
+      }
+    }else{
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    }
   }
 
   if(p->killed)

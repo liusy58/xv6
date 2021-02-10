@@ -47,9 +47,23 @@ sys_sbrk(void)
   if(argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
-  return addr;
+  // if(growproc(n) < 0)
+  //   return -1;
+  //printf("now size is %p and now the n is %d\n",myproc()->sz,n);
+  uint64 before_sz = myproc()->sz;
+
+  myproc()->sz += n;
+  uint64 now_sz = myproc()->sz;
+  if(n>0){
+    //printf("in add pid: %d and now the sz is %p\n",myproc()->pid,myproc()->sz);
+    return addr;
+  }
+  else{
+    // uvmunmap(myproc()->pagetable,PGROUNDUP(myproc()->sz),PGROUNDUP(before_sz-now_sz)/PGSIZE,1);
+    uvmdealloc(myproc()->pagetable, before_sz, now_sz);
+   //printf("in mius pid: %d and now the sz is %p\n",myproc()->pid,myproc()->sz);
+    return addr;
+  }
 }
 
 uint64

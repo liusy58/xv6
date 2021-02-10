@@ -43,3 +43,15 @@ You will need a RISC-V "newlib" tool chain from
 https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
 riscv64-softmmu. Once they are installed, and in your shell
 search path, you can run "make qemu".
+
+
+- [ ] Eliminate allocation from sbrk() (easy)
+- [ ] Lazy allocation (moderate)
+- [ ] Lazytests and Usertests (moderate)
+
+
+sbrkarg的特殊之处在于，他是在copyin这个函数里面软查找页表的时候产生缺页的，不会产生缺页中断，但是会导致写入失败。所以要在walkaddr里面也处理一下lazy alloc的情况。
+
+
+
+r_sp() 在用户空间下的值是the sp is 0x0000000000010DE0
