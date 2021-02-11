@@ -7,6 +7,11 @@ Thank Robert Morris and all my friends who helped me debug and encourage me to c
 - [x] Lab3
 - [x] Lab4
 - [x] Lab5
+- [x] Lab6
+- [x] Lab7
+- [x] Lab8
+- [x] Lab9
+
 
 
 ## Lab1 Xv6 and Unix utilities
