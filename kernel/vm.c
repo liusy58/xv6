@@ -5,7 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include "spinlock.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -370,8 +371,27 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    if(pa0 == 0){
+      uint64 address = va0;
+      uint64 sp = PGROUNDDOWN(myproc()->trapframe->sp);
+      //printf("sp down is %p\n",sp);
+      if(address > myproc()->sz ||(address<sp&&address>(sp-PGSIZE))){
+        printf("I'm here\n");
+        return -1;
+      }
+      address = PGROUNDDOWN(address);
+      char *mem;
+      mem = kalloc();
+      if(mem == 0){
+        return -1;
+      }
+      memset(mem, 0, PGSIZE);
+      if(mappages(myproc()->pagetable, address, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+          kfree(mem);
+          return -1;
+      }
+      pa0 = walkaddr(pagetable, va0);
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -395,8 +415,27 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    if(pa0 == 0){
+        uint64 address = va0;
+        uint64 sp = PGROUNDDOWN(myproc()->trapframe->sp);
+        //printf("sp down is %p\n",sp);
+        if(address > myproc()->sz ||(address<sp&&address>(sp-PGSIZE))){
+          printf("I'm here\n");
+          return -1;
+        }
+        address = PGROUNDDOWN(address);
+        char *mem;
+        mem = kalloc();
+        if(mem == 0){
+          return -1;
+        }
+        memset(mem, 0, PGSIZE);
+        if(mappages(myproc()->pagetable, address, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+            kfree(mem);
+            return -1;
+        }
+      pa0 = walkaddr(pagetable, va0);
+    }
     n = PGSIZE - (srcva - va0);
     if(n > len)
       n = len;
