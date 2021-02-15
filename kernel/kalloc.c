@@ -25,13 +25,13 @@ struct {
 
 struct {
   struct spinlock lock;
-  int count[PHYSTOP>>12];
+  int count[PGROUNDUP(PHYSTOP)>>12];
 } page_ref;
 
 void init_page_ref(){
   initlock(&page_ref.lock, "page_ref");
   acquire(&page_ref.lock);
-  for(int i=0;i<PHYSTOP>>12;++i)
+  for(int i=0;i<(PGROUNDUP(PHYSTOP)>>12);++i)
     page_ref.count[i]=0;
   release(&page_ref.lock);
 }
@@ -84,13 +84,12 @@ void
 kfree(void *pa)
 {
   struct run *r;
+  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+    panic("kfree");
   dec_page_ref(pa);
   if(get_page_ref(pa)>0){
     return ;
   }
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-    panic("kfree");
-
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -116,8 +115,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
-  inc_page_ref((void*)r);
+    inc_page_ref((void*)r);
+  }
   return (void*)r;
 }
