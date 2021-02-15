@@ -16,7 +16,42 @@ void kernelvec();
 
 extern int devintr();
 
-void
+// -1 means cannot alloc mem
+// -2 means the address is invalid
+// 0 means ok
+int page_fault_handler(void*va,pagetable_t pagetable){
+  struct proc* p = myproc();
+  if((uint64)va>=MAXVA||((uint64)va>=PGROUNDDOWN(p->trapframe->sp)-PGSIZE&&(uint64)va<=PGROUNDDOWN(p->trapframe->sp))){
+    return -2;
+  }
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+  pte = walk(pagetable,(uint64)va,0);
+  if(pte == 0){
+    return -2;
+  }
+  pa = PTE2PA(*pte);
+  if(pa == 0){
+    return -2;
+  }
+  flags = PTE_FLAGS(*pte);
+  if(flags&PTE_C){
+    flags = (flags|PTE_W)&(~PTE_C);
+    char*mem;
+    mem = kalloc();
+    if(mem==0){
+      return -1;
+    } 
+    *pte = PA2PTE(mem)|flags;
+    kfree((void*)pa);
+    return 0;
+  }
+  return 0;
+}
+
+
+void 
 trapinit(void)
 {
   initlock(&tickslock, "time");
@@ -67,7 +102,13 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  }else if(r_scause()==13||r_scause()==15){
+    int res = page_fault_handler((void*)r_stvec(),p->pagetable);
+    if(res == -1){
+      p->killed=1;
+    }
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
