@@ -2128,6 +2128,7 @@ kernmem(char *s)
   int pid;
 
   for(a = (char*)(KERNBASE); a < (char*) (KERNBASE+2000000); a += 50000){
+    //printf("hhh the a is %p\n",a);
     pid = fork();
     if(pid < 0){
       printf("%s: fork failed\n", s);
@@ -2695,7 +2696,7 @@ main(int argc, char *argv[])
     {reparent2, "reparent2"},
     {pgbug, "pgbug" },
     {sbrkbugs, "sbrkbugs" },
-    // {badwrite, "badwrite" },
+    {badwrite, "badwrite" },
     {badarg, "badarg" },
     {reparent, "reparent" },
     {twochildren, "twochildren"},

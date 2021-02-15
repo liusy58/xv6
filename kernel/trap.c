@@ -108,7 +108,7 @@ usertrap(void)
     // ok
   }else if(r_scause()==13||r_scause()==15){
     int res = page_fault_handler((void*)r_stval(),p->pagetable);
-    if(res == -1){
+    if(res == -1 || res==-2){
       p->killed=1;
     }
   }else {
