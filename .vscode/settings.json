@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "cmath": "c",
+        "limits": "c",
+        "type_traits": "c"
+    }
+}
