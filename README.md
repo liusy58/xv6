@@ -512,3 +512,262 @@ Since we need to mark how many ticks have passed we declare `now_ticks` adn we u
     ```
 we shouldn't directly restore all variables to traframe because all kernel stack and something other are used for public(becuase if we restore kernel stack we may encounter error).
 
+
+
+## Lab6 Copy-on-Write Fork for xv6
+
+### Implement copy-on write(hard)
+
+---
+Your task is to implement copy-on-write fork in the xv6 kernel. You are done if your modified kernel executes both the cowtest and usertests programs successfully.
+
+---
+
+* Modify uvmcopy() to map the parent's physical pages into the child, instead of allocating new pages. Clear PTE_W in the PTEs of both child and parent. 
+
+---
+That's to say, we need to make those pages of parents which is marked as writable unwritable and use a new bit to mark them as `COW` page. By doing so we can share readable pages between parents and children and when need to write on `COW` pages we allocate new pages.
+
+---
+
+```C
+-  char *mem;
+ 
+   for(i = 0; i < sz; i += PGSIZE){
+     if((pte = walk(old, i, 0)) == 0)
+@@ -320,18 +320,26 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+       panic("uvmcopy: page not present");
+     pa = PTE2PA(*pte);
+     flags = PTE_FLAGS(*pte);
+-    if((mem = kalloc()) == 0)
+-      goto err;
+-    memmove(mem, (char*)pa, PGSIZE);
+-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+-      kfree(mem);
++    if(flags&PTE_W){
++      flags = (flags&(~PTE_W))|PTE_C;
++      *pte = PA2PTE(pa)|flags;
++    }
++    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+       goto err;
+     }
++    inc_page_ref((void*)pa);
++    // if((mem = kalloc()) == 0)
++    //   goto err;
++    // memmove(mem, (char*)pa, PGSIZE);
++    // if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
++    //   kfree(mem);
++    //   goto err;
++    // }
+
+```
+
+* Modify usertrap() to recognize page faults. When a page-fault occurs on a COW page, allocate a new page with kalloc(), copy the old page to the new page, and install the new page in the PTE with PTE_W set.
+
+---
+Note, this only cares the current process so we just allocate a page for the cow page and map the new page to the pagetable. We need call  `kfree()` to free the previous page which is a cow page if no process owns it.
+
+---
+
+
+```C
+-void
++// -1 means cannot alloc mem
++// -2 means the address is invalid
++// 0 means ok
++int page_fault_handler(void*va,pagetable_t pagetable){
++ 
++  struct proc* p = myproc();
++  if((uint64)va>=MAXVA||((uint64)va>=PGROUNDDOWN(p->trapframe->sp)-PGSIZE&&(uint64)va<=PGROUNDDOWN(p->trapframe->sp))){
++    return -2;
++  }
++
++  pte_t *pte;
++  uint64 pa;
++  uint flags;
++  va = (void*)PGROUNDDOWN((uint64)va);
++  pte = walk(pagetable,(uint64)va,0);
++  if(pte == 0){
++    return -1;
++  }
++  pa = PTE2PA(*pte);
++  if(pa == 0){
++    return -1;
++  }
++  flags = PTE_FLAGS(*pte);
++  if(flags&PTE_C){
++    flags = (flags|PTE_W)&(~PTE_C);
++    char*mem;
++    mem = kalloc();
++    if(mem==0){
++      return -1;
++    }
++    memmove(mem,(void*)pa,PGSIZE); 
++    *pte = PA2PTE(mem)|flags;
++    kfree((void*)pa);
++    return 0;
++  }
++  return 0;
++}
++
++
++void 
+ trapinit(void)
+ {
+   initlock(&tickslock, "time");
+@@ -67,7 +106,12 @@ usertrap(void)
+     syscall();
+   } else if((which_dev = devintr()) != 0){
+     // ok
+-  } else {
++  }else if(r_scause()==15||r_scause()==13){
++    int res = page_fault_handler((void*)r_stval(),p->pagetable);
++    if(res == -1 || res==-2){
++      p->killed=1;
++    }
++  }else {
+     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+     p->killed = 1;
+
+```
+
+* Ensure that each physical page is freed when the last PTE reference to it goes away -- but not before. A good way to do this is to keep, for each physical page, a "reference count" of the number of user page tables that refer to that page. Set a page's reference count to one when kalloc() allocates it. Increment a page's reference count when fork causes a child to share the page, and decrement a page's count each time any process drops the page from its page table. kfree() should only place a page back on the free list if its reference count is zero. It's OK to to keep these counts in a fixed-size array of integers. You'll have to work out a scheme for how to index the array and how to choose its size. For example, you could index the array with the page's physical address divided by 4096, and give the array a number of elements equal to highest physical address of any page placed on the free list by kinit() in kalloc.c.
+
+
+
+```C
++struct {
++  struct spinlock lock;
++  int count[PGROUNDUP(PHYSTOP)>>12];
++} page_ref;
++
++void init_page_ref(){
++  initlock(&page_ref.lock, "page_ref");
++  acquire(&page_ref.lock);
++  for(int i=0;i<(PGROUNDUP(PHYSTOP)>>12);++i)
++    page_ref.count[i]=0;
++  release(&page_ref.lock);
++}
++
++
++void dec_page_ref(void*pa){
++  acquire(&page_ref.lock);
++  if(page_ref.count[(uint64)pa>>12]<=0){
++    panic("dec_page_ref");
++  }
++  page_ref.count[(uint64)pa>>12]-=1;
++  release(&page_ref.lock);
++}
++
++void inc_page_ref(void*pa){
++  acquire(&page_ref.lock);
++  if(page_ref.count[(uint64)pa>>12]<0){
++    panic("inc_page_ref");
++  }
++  page_ref.count[(uint64)pa>>12]+=1;
++  release(&page_ref.lock);
++}
++
++int get_page_ref(void*pa){
++  acquire(&page_ref.lock);
++  int res = page_ref.count[(uint64)pa>>12];
++  if(page_ref.count[(uint64)pa>>12]<0){
++    panic("get_page_ref");
++  }
++  release(&page_ref.lock);
++  return res;
++}
++
++
+ void
+ kinit()
+ {
++  init_page_ref();
+   initlock(&kmem.lock, "kmem");
+   freerange(end, (void*)PHYSTOP);
+ }
+@@ -35,8 +79,10 @@ freerange(void *pa_start, void *pa_end)
+ {
+   char *p;
+   p = (char*)PGROUNDUP((uint64)pa_start);
+-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
++  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
++    inc_page_ref(p);
+     kfree(p);
++  }
+ }
+ 
+ // Free the page of physical memory pointed at by v,
+@@ -47,10 +93,18 @@ void
+ kfree(void *pa)
+ {
+   struct run *r;
+-
+   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+     panic("kfree");
+-
++  acquire(&page_ref.lock);
++  if(page_ref.count[(uint64)pa>>12]<=0){
++    panic("dec_page_ref");
++  }
++  page_ref.count[(uint64)pa>>12]-=1;
++  if(page_ref.count[(uint64)pa>>12]>0){
++    release(&page_ref.lock);
++    return;
++  }
++  release(&page_ref.lock);
+   // Fill with junk to catch dangling refs.
+   memset(pa, 1, PGSIZE);
+ 
+@@ -76,7 +130,9 @@ kalloc(void)
+     kmem.freelist = r->next;
+   release(&kmem.lock);
+ 
+-  if(r)
++  if(r){
+     memset((char*)r, 5, PGSIZE); // fill with junk
++    inc_page_ref((void*)r);
++  }
+   return (void*)r;
+ }
+
+```
+
+At this point, I have made many mistakes such as:
+
+* forget to increase the ref_count in `freerange()` since `freerange()` will call `kfree()` and `free()` will decrease the count so we need to first increase then  decrease.
+* I first write a version `kfree()` as follow:
+    ```C
+    dec_page_ref(pa);
+    if(get_page_ref(pa)>0){
+        return ;
+    }
+    ```
+this can cause many mistakes because there is a gap between the two call `dec_page_ref()` and `get_page_ref()` so if two process call `kfree()` to free the COW page but the procedure can be like this: a.dec,b.dec,b.get,b.get so this may cause the page to repeate inserting to the list.
+
+* Modify copyout() to use the same scheme as page faults when it encounters a COW page.
+
+```C
+copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+ {
+-  uint64 n, va0, pa0;
+-
++  uint64 n, va0, pa0,flags;
++  pte_t *pte;
+   while(len > 0){
+     va0 = PGROUNDDOWN(dstva);
+     pa0 = walkaddr(pagetable, va0);
+     if(pa0 == 0)
+       return -1;
++    pte = walk(pagetable,va0,0);
++    flags=PTE_FLAGS(*pte);
++    if(flags&PTE_C){
++      page_fault_handler((void*)va0,pagetable);
++      pa0 = walkaddr(pagetable,va0);
++    }
+     n = PGSIZE - (dstva - va0);
+     if(n > len)
+       n = len;
+```
+
