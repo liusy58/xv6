@@ -23,7 +23,7 @@ int page_fault_handler(void*va,pagetable_t pagetable){
  
   struct proc* p = myproc();
   if((uint64)va>=MAXVA||((uint64)va>=PGROUNDDOWN(p->trapframe->sp)-PGSIZE&&(uint64)va<=PGROUNDDOWN(p->trapframe->sp))){
-    return -2;
+    return -1;
   }
 
   pte_t *pte;
@@ -32,11 +32,11 @@ int page_fault_handler(void*va,pagetable_t pagetable){
   va = (void*)PGROUNDDOWN((uint64)va);
   pte = walk(pagetable,(uint64)va,0);
   if(pte == 0){
-    return -2;
+    return -1;
   }
   pa = PTE2PA(*pte);
   if(pa == 0){
-    return -2;
+    return -1;
   }
   flags = PTE_FLAGS(*pte);
   if(flags&PTE_C){
@@ -106,7 +106,7 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  }else if(r_scause()==13||r_scause()==15){
+  }else if(r_scause()==15||r_scause()==13){
     int res = page_fault_handler((void*)r_stval(),p->pagetable);
     if(res == -1 || res==-2){
       p->killed=1;

@@ -39,12 +39,18 @@ void init_page_ref(){
 
 void dec_page_ref(void*pa){
   acquire(&page_ref.lock);
+  if(page_ref.count[(uint64)pa>>12]<=0){
+    panic("dec_page_ref");
+  }
   page_ref.count[(uint64)pa>>12]-=1;
   release(&page_ref.lock);
 }
 
 void inc_page_ref(void*pa){
   acquire(&page_ref.lock);
+  if(page_ref.count[(uint64)pa>>12]<0){
+    panic("inc_page_ref");
+  }
   page_ref.count[(uint64)pa>>12]+=1;
   release(&page_ref.lock);
 }
@@ -52,6 +58,9 @@ void inc_page_ref(void*pa){
 int get_page_ref(void*pa){
   acquire(&page_ref.lock);
   int res = page_ref.count[(uint64)pa>>12];
+  if(page_ref.count[(uint64)pa>>12]<0){
+    panic("get_page_ref");
+  }
   release(&page_ref.lock);
   return res;
 }
@@ -86,10 +95,16 @@ kfree(void *pa)
   struct run *r;
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
-  dec_page_ref(pa);
-  if(get_page_ref(pa)>0){
-    return ;
+  acquire(&page_ref.lock);
+  if(page_ref.count[(uint64)pa>>12]<=0){
+    panic("dec_page_ref");
   }
+  page_ref.count[(uint64)pa>>12]-=1;
+  if(page_ref.count[(uint64)pa>>12]>0){
+    release(&page_ref.lock);
+    return;
+  }
+  release(&page_ref.lock);
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
