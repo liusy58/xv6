@@ -3,7 +3,7 @@ This repo contains all my codes and bugs I encountered during my work on mit6.s0
 Thank Robert Morris and all my friends who helped me debug and encourage me to continue.
 
 - [x] Lab1 Xv6 and Unix utilities
-- [x] Lab2
+- [x] Lab2 
 - [x] Lab3
 - [x] Lab4
 - [x] Lab5
@@ -770,4 +770,17 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
      if(n > len)
        n = len;
 ```
+
+
+
+## Notes
+
+### Chapter7 Scheduling
+
+* Why need a thread for scheduling?
+
+![](./images/1.png)
+
+> The xv6 scheduler has a dedicated thread (saved registers and stack) per CPU
+because it is not safe for the scheduler execute on the old process’s kernel stack: some other core might wake the process up and run it, and it would be a disaster to use the same stack on two different cores. 
 
