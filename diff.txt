@@ -1,0 +1,368 @@
+diff --git a/.gdb_history b/.gdb_history
+new file mode 100644
+index 0000000..0c7bb4e
+--- /dev/null
++++ b/.gdb_history
+@@ -0,0 +1,15 @@
++b cal_nproc
++c
++n
++ni
++ni
++c
++c
++run
++r
++c
++c
++c
++c
++c
++c
+diff --git a/.gitignore b/.gitignore
+index b1d8932..6beedbd 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -20,3 +20,4 @@ myapi.key
+ xv6.out*
+ .vagrant/
+ submissions/
++
+diff --git a/Makefile b/Makefile
+index f0beb51..15ab2e8 100644
+--- a/Makefile
++++ b/Makefile
+@@ -149,6 +149,8 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
++	$U/_trace\
++	$U/_sysinfotest\
+ 
+ 
+ 
+diff --git a/README b/README.md
+similarity index 53%
+rename from README
+rename to README.md
+index 06035bb..05cd0d5 100644
+--- a/README
++++ b/README.md
+@@ -43,3 +43,83 @@ You will need a RISC-V "newlib" tool chain from
+ https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
+ riscv64-softmmu. Once they are installed, and in your shell
+ search path, you can run "make qemu".
++
++
++
++- [ ] System call tracing
++- [ ] Sysinfo
++- [ ] print system call arguments(optional)
++- [ ] Compute the load average and export it throygh sysinfo
++
++
++
++### System call tracing ✅
++
++The step of system call:
++
++ecall -> trampoline -> usertrap() -> system call
++
++* step 1
++Add `$U/_trace` to UPROGS in Makefile
++
++* step 2
++add a prototype to `user.h`
++
++```C
++int trace(int);
++```
++
++* step 3
++add a stub to `usys.pl` and system number to `syscall.h`
++
++* step 4
++add a filed in proc to store the mask passed by the user
++
++* step 5
++modify `syscall()` to print the message
++
++
++
++### Sysinfo
++* step 1
++Add `$U/_sysinfotest` to UPROGS in Makefile
++
++* step 2
++add prototype 
++
++* step 3
++add `cal_freemem` function in `kalloc.c`
++
++```C
++uint64 cal_freemem(){
++  struct run *r;
++  uint64 freemem=0;
++  r = kmem.freelist;
++  acquire(&kmem.lock);
++  while(r){
++    freemem += PGSIZE;
++    r = r->next;
++  }
++  release(&kmem.lock);
++  return freemem;
++}
++```
++
++* step 4
++add `call_freemem` and `call_nproc` in `defs.h`
++
++* step 5
++copy out and need roubustness
++use local variable instead of pointer to withdraw the value passed by caller.
++
++
++
++记录一些问题：
++* 为什么从内核态到用户态需要用到copyout？
++因为内核态的页表和用户态的不是一样的，用户态页表和内核态的都需要进行映射，而用户态传过来的地址全部都是虚拟地址，所以需要手动转化为物理地址，再copy。
++
++* 为什么我们在系统调用中需要那么麻烦的将传递的参数用很多函数比如`argaddr`中取出来呢？
++
++因为在系统调用的整个过程，会存在很多的指令，所以我们先把从用户态传递过来的参数保存到trapframe里面去，因为如果不保存的话寄存器会被覆盖掉，而参数的传递一般在a0-a5寄存器中。
++
++
+diff --git a/gradelib.pyc b/gradelib.pyc
+new file mode 100644
+index 0000000..abb3b1b
+Binary files /dev/null and b/gradelib.pyc differ
+diff --git a/kernel/defs.h b/kernel/defs.h
+index 4b9bbc0..5487b45 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,6 +63,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
++uint64          cal_freemem();
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -105,6 +106,8 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
+ 
++uint64          cal_nproc();
++
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+ 
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index fa6a0ac..8d2af42 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -80,3 +80,17 @@ kalloc(void)
+     memset((char*)r, 5, PGSIZE); // fill with junk
+   return (void*)r;
+ }
++
++
++uint64 cal_freemem(){
++  struct run *r;
++  uint64 freemem=0;
++  r = kmem.freelist;
++  acquire(&kmem.lock);
++  while(r){
++    freemem += PGSIZE;
++    r = r->next;
++  }
++  release(&kmem.lock);
++  return freemem;
++}
+\ No newline at end of file
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 6afafa1..93447a8 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -277,6 +277,7 @@ fork(void)
+ 
+   np->parent = p;
+ 
++  np->mask = p->mask;
+   // copy saved user registers.
+   *(np->trapframe) = *(p->trapframe);
+ 
+@@ -693,3 +694,18 @@ procdump(void)
+     printf("\n");
+   }
+ }
++
++
++
++uint64 cal_nproc(){
++  uint64 nproc=0;
++  struct proc *p;
++  for(p = proc; p < &proc[NPROC]; p++) {
++    acquire(&p->lock);
++    if(p->state != UNUSED) {
++      nproc++;
++    }
++    release(&p->lock);
++  }
++  return nproc;
++}
+diff --git a/kernel/proc.h b/kernel/proc.h
+index 9c16ea7..c5d61cf 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -103,4 +103,5 @@ struct proc {
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
++  int mask;
+ };
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index c1b3670..ee25ccd 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -104,6 +104,8 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_wait(void);
+ extern uint64 sys_write(void);
+ extern uint64 sys_uptime(void);
++extern uint64 sys_trace(void);
++extern uint64 sys_sysinfo(void);
+ 
+ static uint64 (*syscalls[])(void) = {
+ [SYS_fork]    sys_fork,
+@@ -127,8 +129,13 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_trace]   sys_trace,
++[SYS_sysinfo]   sys_sysinfo,
+ };
+ 
++
++
++static char *syscall_name[]={"","fork","exit","wait","pipe","read","kill","exec","fstat","chdir","dup","getpid","sbrk","sleep","uptime","open","write","mknod","unlink","link","mkdir","close","trace","sysinfo"};
+ void
+ syscall(void)
+ {
+@@ -138,6 +145,9 @@ syscall(void)
+   num = p->trapframe->a7;
+   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+     p->trapframe->a0 = syscalls[num]();
++    if((p->mask>>num)&1){
++      printf("%d: syscall %s -> %d\n",p->pid,syscall_name[num],p->trapframe->a0);
++    }
+   } else {
+     printf("%d %s: unknown sys call %d\n",
+             p->pid, p->name, num);
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..e153363 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,5 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_trace  22
++#define SYS_sysinfo 23
+\ No newline at end of file
+diff --git a/kernel/sysfile.c b/kernel/sysfile.c
+index 5dc453b..ceb7615 100644
+--- a/kernel/sysfile.c
++++ b/kernel/sysfile.c
+@@ -484,3 +484,5 @@ sys_pipe(void)
+   }
+   return 0;
+ }
++
++
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index e8bcda9..c614de3 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -6,6 +6,7 @@
+ #include "memlayout.h"
+ #include "spinlock.h"
+ #include "proc.h"
++#include "sysinfo.h"
+ 
+ uint64
+ sys_exit(void)
+@@ -95,3 +96,28 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++uint64
++sys_trace(void){
++  int n;
++  if(argint(0, &n) < 0)
++    return -1;
++  myproc()->mask = n;
++  return 0;
++}
++
++
++uint64
++sys_sysinfo(void){
++
++  struct sysinfo kinfo;
++  uint64 info;
++  if(argaddr(0,&info)<0)
++    return -1;
++  kinfo.freemem = cal_freemem();
++  kinfo.nproc = cal_nproc();
++  if(copyout(myproc()->pagetable,(uint64)info,(char*)&kinfo,sizeof(struct sysinfo))<0){
++    return -1;
++  }
++  return 0;
++}
+\ No newline at end of file
+diff --git a/time.txt b/time.txt
+new file mode 100644
+index 0000000..7813681
+--- /dev/null
++++ b/time.txt
+@@ -0,0 +1 @@
++5
+\ No newline at end of file
+diff --git a/user/sysinfotest.c b/user/sysinfotest.c
+index 254f6d2..079daf9 100644
+--- a/user/sysinfotest.c
++++ b/user/sysinfotest.c
+@@ -99,6 +99,7 @@ void testproc() {
+   sinfo(&info);
+   nproc = info.nproc;
+ 
++  
+   pid = fork();
+   if(pid < 0){
+     printf("sysinfotest: fork failed\n");
+diff --git a/user/user.h b/user/user.h
+index b71ecda..6c825c6 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -23,6 +23,10 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int trace(int);
++struct sysinfo;
++int sysinfo(struct sysinfo*);
++
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..bc109fd 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,5 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("trace");
++entry("sysinfo");
