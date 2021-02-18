@@ -79,7 +79,7 @@ thread_schedule(void)
      * Invoke thread_switch to switch from t to next_thread:
      * thread_switch(??, ??);
      */
-    thread_switch(t,next_thread);
+    thread_switch((uint64)t,(uint64)next_thread);
   } else
     next_thread = 0;
 }
@@ -93,9 +93,10 @@ thread_create(void (*func)())
     if (t->state == FREE) break;
   }
   t->state = RUNNABLE;
-  t->sp = t->stack;
-  
   // YOUR CODE HERE
+  t->ra = (uint64)func;
+  //栈是向下生长的！！！很重要
+  t->sp = (uint64)t->stack+STACK_SIZE;
 }
 
 void 
