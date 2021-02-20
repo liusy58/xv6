@@ -1324,6 +1324,186 @@ index fa6a0ac..5e4ec1a 100644
      memset((char*)r, 5, PGSIZE); // fill with junk
 ```
 
+
+### Buffer cache (hard)
+> Same as the first one avove.
+```diff
+diff --git a/kernel/bio.c b/kernel/bio.c
+index 60d91a6..0108dd3 100644
+--- a/kernel/bio.c
++++ b/kernel/bio.c
+@@ -24,31 +24,32 @@
+ #include "buf.h"
+ 
+ struct {
+-  struct spinlock lock;
+-  struct buf buf[NBUF];
++  struct spinlock lock[BUCKETS];
++  struct buf buf[BUCKETS][BNBUF];
+ 
+   // Linked list of all buffers, through prev/next.
+   // Sorted by how recently the buffer was used.
+   // head.next is most recent, head.prev is least.
+-  struct buf head;
++  struct buf head[BUCKETS];
+ } bcache;
+ 
+ void
+ binit(void)
+ {
+   struct buf *b;
+-
+-  initlock(&bcache.lock, "bcache");
+-
+-  // Create linked list of buffers
+-  bcache.head.prev = &bcache.head;
+-  bcache.head.next = &bcache.head;
+-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
+-    b->next = bcache.head.next;
+-    b->prev = &bcache.head;
+-    initsleeplock(&b->lock, "buffer");
+-    bcache.head.next->prev = b;
+-    bcache.head.next = b;
++  for(int i=0;i<BUCKETS;++i){
++    initlock(&bcache.lock[i], "bcache");
++
++    // Create linked list of buffers
++    bcache.head[i].prev = &bcache.head[i];
++    bcache.head[i].next = &bcache.head[i];
++    for(b = bcache.buf[i]; b < bcache.buf[i]+BNBUF; b++){
++      b->next = bcache.head[i].next;
++      b->prev = &bcache.head[i];
++      initsleeplock(&b->lock, "buffer");
++      bcache.head[i].next->prev = b;
++      bcache.head[i].next = b;
++    }
+   }
+ }
+ 
+@@ -59,14 +60,14 @@ static struct buf*
+ bget(uint dev, uint blockno)
+ {
+   struct buf *b;
+-
+-  acquire(&bcache.lock);
++  int i = blockno%BUCKETS;
++  acquire(&bcache.lock[i]);
+ 
+   // Is the block already cached?
+-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
++  for(b = bcache.head[i].next; b != &bcache.head[i]; b = b->next){
+     if(b->dev == dev && b->blockno == blockno){
+       b->refcnt++;
+-      release(&bcache.lock);
++      release(&bcache.lock[i]);
+       acquiresleep(&b->lock);
+       return b;
+     }
+@@ -74,17 +75,26 @@ bget(uint dev, uint blockno)
+ 
+   // Not cached.
+   // Recycle the least recently used (LRU) unused buffer.
+-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
++  for(b = bcache.head[i].prev; b != &bcache.head[i]; b = b->prev){
+     if(b->refcnt == 0) {
+       b->dev = dev;
+       b->blockno = blockno;
+       b->valid = 0;
+       b->refcnt = 1;
+-      release(&bcache.lock);
++      release(&bcache.lock[i]);
+       acquiresleep(&b->lock);
+       return b;
+     }
+   }
++  // b = bcache.head[i].prev;
++  // acquiresleep(&b->lock);
++  // bwrite(b);
++  // b->dev = dev;
++  // b->blockno = blockno;
++  // b->valid = 0;
++  // b->refcnt = 1;
++  // release(&bcache.lock[i]);
++  // return b;
+   panic("bget: no buffers");
+ }
+ 
+@@ -118,36 +128,38 @@ brelse(struct buf *b)
+ {
+   if(!holdingsleep(&b->lock))
+     panic("brelse");
+-
++  int i=b->blockno%BUCKETS;
+   releasesleep(&b->lock);
+ 
+-  acquire(&bcache.lock);
++  acquire(&bcache.lock[i]);
+   b->refcnt--;
+   if (b->refcnt == 0) {
+     // no one is waiting for it.
+     b->next->prev = b->prev;
+     b->prev->next = b->next;
+-    b->next = bcache.head.next;
+-    b->prev = &bcache.head;
+-    bcache.head.next->prev = b;
+-    bcache.head.next = b;
++    b->next = bcache.head[i].next;
++    b->prev = &bcache.head[i];
++    bcache.head[i].next->prev = b;
++    bcache.head[i].next = b;
+   }
+   
+-  release(&bcache.lock);
++  release(&bcache.lock[i]);
+ }
+ 
+ void
+ bpin(struct buf *b) {
+-  acquire(&bcache.lock);
++  int i = b->blockno%BUCKETS;
++  acquire(&bcache.lock[i]);
+   b->refcnt++;
+-  release(&bcache.lock);
++  release(&bcache.lock[i]);
+ }
+ 
+ void
+ bunpin(struct buf *b) {
+-  acquire(&bcache.lock);
++  int i = b->blockno%BUCKETS;
++  acquire(&bcache.lock[i]);
+   b->refcnt--;
+-  release(&bcache.lock);
++  release(&bcache.lock[i]);
+ }
+ 
+ 
+diff --git a/kernel/main.c b/kernel/main.c
+index 9b75ec3..72ff75c 100644
+--- a/kernel/main.c
++++ b/kernel/main.c
+@@ -28,6 +28,7 @@ main()
+     plicinit();      // set up interrupt controller
+     plicinithart();  // ask PLIC for device interrupts
+     binit();         // buffer cache
++    printf("binit is ok\n");
+     iinit();         // inode cache
+     fileinit();      // file table
+     virtio_disk_init(); // emulated hard disk
+diff --git a/kernel/param.h b/kernel/param.h
+index bb80c76..a298d77 100644
+--- a/kernel/param.h
++++ b/kernel/param.h
+@@ -11,3 +11,5 @@
+ #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
+ #define FSSIZE       10000  // size of file system in blocks
+ #define MAXPATH      128   // maximum file path name
++#define BUCKETS      13
++#define BNBUF        10
+\ No newline at end of file
+
+
+```
 ## Notes
 
 ### Chapter7 Scheduling
