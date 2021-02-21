@@ -80,7 +80,6 @@ main(int argc, char *argv[])
     fprintf(stderr, "Usage: mkfs fs.img files...\n");
     exit(1);
   }
-
   assert((BSIZE % sizeof(struct dinode)) == 0);
   assert((BSIZE % sizeof(struct dirent)) == 0);
 
