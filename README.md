@@ -1511,20 +1511,6 @@ index bb80c76..a298d77 100644
 ### Large files (moderate)
 
 ```diff
-diff --git a/README b/README
-index 06035bb..9f1e4d2 100644
---- a/README
-+++ b/README
-@@ -43,3 +43,8 @@ You will need a RISC-V "newlib" tool chain from
- https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
- riscv64-softmmu. Once they are installed, and in your shell
- search path, you can run "make qemu".
-+
-+
-+test manywrites: panic: virtio_disk_intr status
-+
-+  uint addrs[NDIRECT+2];
-\ No newline at end of file
 diff --git a/kernel/file.h b/kernel/file.h
 index b076d1d..5c4eb3a 100644
 --- a/kernel/file.h
