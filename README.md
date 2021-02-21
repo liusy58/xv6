@@ -1510,6 +1510,127 @@ index bb80c76..a298d77 100644
 
 ### Large files (moderate)
 
+```diff
+diff --git a/README b/README
+index 06035bb..9f1e4d2 100644
+--- a/README
++++ b/README
+@@ -43,3 +43,8 @@ You will need a RISC-V "newlib" tool chain from
+ https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
+ riscv64-softmmu. Once they are installed, and in your shell
+ search path, you can run "make qemu".
++
++
++test manywrites: panic: virtio_disk_intr status
++
++  uint addrs[NDIRECT+2];
+\ No newline at end of file
+diff --git a/kernel/file.h b/kernel/file.h
+index b076d1d..5c4eb3a 100644
+--- a/kernel/file.h
++++ b/kernel/file.h
+@@ -26,7 +26,7 @@ struct inode {
+   short minor;
+   short nlink;
+   uint size;
+-  uint addrs[NDIRECT+1];
++  uint addrs[NDIRECT+2];
+ };
+ 
+ // map major device number to device functions.
+diff --git a/kernel/fs.c b/kernel/fs.c
+index f33553a..582c88b 100644
+--- a/kernel/fs.c
++++ b/kernel/fs.c
+@@ -401,6 +401,28 @@ bmap(struct inode *ip, uint bn)
+     return addr;
+   }
+ 
++  bn -= NINDIRECT;
++  if(bn < DNINDIRECT){
++    if((addr = ip->addrs[DNDIRECT]) == 0)
++      ip->addrs[DNDIRECT] = addr = balloc(ip->dev);
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    if((addr = a[bn/NINDIRECT]) == 0){
++      a[bn/NINDIRECT] = addr = balloc(ip->dev);
++      log_write(bp);
++    }
++    brelse(bp);
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    if((addr = a[bn%NINDIRECT]) == 0){
++      a[bn%NINDIRECT] = addr = balloc(ip->dev);
++      log_write(bp);
++    }
++    brelse(bp);
++    return addr;
++  }
++
++
+   panic("bmap: out of range");
+ }
+ 
+@@ -432,6 +454,29 @@ itrunc(struct inode *ip)
+     ip->addrs[NDIRECT] = 0;
+   }
+ 
++  if(ip->addrs[DNDIRECT]){
++    bp = bread(ip->dev, ip->addrs[DNDIRECT]);
++    a = (uint*)bp->data;
++    for(j = 0; j < NINDIRECT; j++){
++      if(a[j]){
++        struct buf *dbp;
++        uint *da;
++        dbp = bread(ip->dev, a[j]);
++        da = (uint*)dbp->data;
++        for(int k = 0; k < NINDIRECT; k++){
++          if(da[k])
++            bfree(ip->dev, da[k]);
++        }
++        brelse(dbp);
++        bfree(ip->dev,a[j]);
++        a[j] = 0;
++      }
++    }
++    brelse(bp);
++    bfree(ip->dev, ip->addrs[DNDIRECT]);
++    ip->addrs[DNDIRECT] = 0;
++  }
++
+   ip->size = 0;
+   iupdate(ip);
+ }
+diff --git a/kernel/fs.h b/kernel/fs.h
+index 139dcc9..b94876a 100644
+--- a/kernel/fs.h
++++ b/kernel/fs.h
+@@ -24,9 +24,11 @@ struct superblock {
+ 
+ #define FSMAGIC 0x10203040
+ 
+-#define NDIRECT 12
++#define NDIRECT 11
++#define DNDIRECT 12
+ #define NINDIRECT (BSIZE / sizeof(uint))
+-#define MAXFILE (NDIRECT + NINDIRECT)
++#define DNINDIRECT (BSIZE / sizeof(uint))*(BSIZE / sizeof(uint))
++#define MAXFILE (NDIRECT + NINDIRECT + DNINDIRECT)
+ 
+ // On-disk inode structure
+ struct dinode {
+@@ -35,7 +37,7 @@ struct dinode {
+   short minor;          // Minor device number (T_DEVICE only)
+   short nlink;          // Number of links to inode in file system
+   uint size;            // Size of file (bytes)
+-  uint addrs[NDIRECT+1];   // Data block addresses
++  uint addrs[NDIRECT+2];   // Data block addresses
+ };
+ 
+```
+
+* bug I 
+forget to modify minode which causes `virtio_disk_intr` panic.
 
 
 
