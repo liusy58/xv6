@@ -1618,7 +1618,145 @@ index 139dcc9..b94876a 100644
 * bug I 
 forget to modify minode which causes `virtio_disk_intr` panic.
 
+### Symbolic links (moderate)
 
+```diff
+diff --git a/kernel/fcntl.h b/kernel/fcntl.h
+index 44861b9..06fbfd3 100644
+--- a/kernel/fcntl.h
++++ b/kernel/fcntl.h
+@@ -3,3 +3,4 @@
+ #define O_RDWR    0x002
+ #define O_CREATE  0x200
+ #define O_TRUNC   0x400
++#define O_NOFOLLOW 0X800
+\ No newline at end of file
+diff --git a/kernel/stat.h b/kernel/stat.h
+index 19543af..cbcacbe 100644
+--- a/kernel/stat.h
++++ b/kernel/stat.h
+@@ -1,6 +1,7 @@
+ #define T_DIR     1   // Directory
+ #define T_FILE    2   // File
+ #define T_DEVICE  3   // Device
++#define T_SYMLINK 4
+ 
+ struct stat {
+   int dev;     // File system's disk device
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index c1b3670..307fd4a 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -104,7 +104,7 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_wait(void);
+ extern uint64 sys_write(void);
+ extern uint64 sys_uptime(void);
+-
++extern uint64 sys_symlink(void);
+ static uint64 (*syscalls[])(void) = {
+ [SYS_fork]    sys_fork,
+ [SYS_exit]    sys_exit,
+@@ -127,6 +127,7 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_symlink]   sys_symlink,
+ };
+ 
+ void
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..6648b55 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,4 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_symlink  22
+\ No newline at end of file
+diff --git a/kernel/sysfile.c b/kernel/sysfile.c
+index 5dc453b..a32c26b 100644
+--- a/kernel/sysfile.c
++++ b/kernel/sysfile.c
+@@ -309,6 +309,28 @@ sys_open(void)
+       return -1;
+     }
+     ilock(ip);
++    int cnt =10;
++    while (ip->type==T_SYMLINK&&!(omode&O_NOFOLLOW)&&cnt)
++    {
++      if(readi(ip,0,(uint64)path,0,ip->size)!=ip->size){
++          iunlockput(ip);
++          end_op();
++          return -1;
++      }
++      iunlockput(ip);
++      if((ip = namei(path)) == 0){
++        end_op();
++        return -1;
++      }
++      ilock(ip);
++      cnt--;
++    }
++    if(!cnt){
++      iunlockput(ip);
++      end_op();
++      return -1;
++    }
++    
+     if(ip->type == T_DIR && omode != O_RDONLY){
+       iunlockput(ip);
+       end_op();
+@@ -484,3 +506,25 @@ sys_pipe(void)
+   }
+   return 0;
+ }
++uint64 sys_symlink(void){
++  char new[MAXPATH], old[MAXPATH];
++  struct inode *dp;
++
++  if(argstr(0, old, MAXPATH) < 0 || argstr(1, new, MAXPATH) < 0)
++    return -1;
++
++  begin_op();
++  dp = create(new,T_SYMLINK,0,0);
++  if(dp == 0){
++    end_op();
++    return -1;
++  }
++  if(writei(dp,0,(uint64)old,0,MAXPATH)!=MAXPATH){
++    iunlockput(dp);
++    end_op();
++    return -1;
++  }
++  iunlockput(dp);
++  end_op();
++  return 0;
++}
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index b71ecda..ea0b006 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -23,6 +23,7 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int symlink(char*, char*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..65a8d6b 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,4 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("symlink");
+\ No newline at end of file
+```
 
 ## Notes
 
