@@ -1616,6 +1616,7 @@ index 139dcc9..b94876a 100644
 ```
 
 * bug I 
+
 forget to modify minode which causes `virtio_disk_intr` panic.
 
 ### Symbolic links (moderate)
