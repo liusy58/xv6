@@ -5,6 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "proc.h"
+#include "file.h"
+#include "fcntl.h"
 
 /*
  * the kernel's page table.
@@ -301,8 +306,23 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uint64 pa, i;
   uint flags;
   char *mem;
-
+  struct proc *p = myproc();
+  int j;
+  int mmapaddr = 0;
   for(i = 0; i < sz; i += PGSIZE){
+    mmapaddr = 0;
+    for(j = 0; j < VMASIZE; j++){
+      if(p->vmas[j].valid == 0){
+        uint64 start = p->vmas[j].addr;
+        uint64 end   = start + p->vmas[j].length;
+        if(i >= start && i < end){
+          mmapaddr = 1;
+          break;
+        }
+      }
+    } 
+    if(mmapaddr)
+      continue;
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
@@ -428,4 +448,53 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int pagefault_handler(uint64 va){
+  struct proc*p=myproc();
+  if (va >= p->sz || va < p->trapframe->sp) {
+    return -1;
+  }
+
+  int i=0;
+  for(;i<VMASIZE;++i){
+    if(p->vmas[i].valid==0){
+      uint64 start = p->vmas[i].addr;
+      uint64 end = start+p->vmas[i].length;
+      if(va>=start&&va<end){
+        break;
+      }
+    }
+  }
+  if(i==VMASIZE){
+    return -1;
+  }
+  struct file *f = p->vmas[i].file;
+  char*mem = kalloc();
+  if(mem==0){
+    return -1;
+  }
+
+  memset(mem,0,PGSIZE);
+  int read;
+  int offset = p->vmas[i].offset+va-p->vmas[i].addr;
+  ilock(f->ip);
+  if((read = readi(f->ip,0,(uint64)mem,(offset/PGSIZE)*PGSIZE,PGSIZE))<=0){
+    iunlock(f->ip);
+    return -1;
+  }
+  iunlock(f->ip);
+  int perm = PTE_V;
+  perm |= PTE_U;
+  if(p->vmas[i].prot & PROT_READ)
+    perm |= PTE_R;
+  if(p->vmas[i].prot & PROT_WRITE)
+    perm |= PTE_W;
+  if(p->vmas[i].prot & PROT_EXEC)
+    perm |= PTE_X;
+  //mappages
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) == -1)
+    return -1;
+  return 0;
+
 }

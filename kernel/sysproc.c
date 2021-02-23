@@ -6,7 +6,10 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-
+#include "sleeplock.h"
+#include "fs.h"
+#include "fcntl.h"
+#include "file.h"
 uint64
 sys_exit(void)
 {
@@ -94,4 +97,115 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64 sys_mmap(void){
+  uint64 addr;
+  uint64 length;
+  int prot;
+  int flags;
+  int fd;
+  int offset;
+  if(argaddr(0,&addr)<0){
+    return -1;
+  }
+  if(argaddr(1,&length)<0){
+    return -1;
+  }
+  if(argint(2,&prot)<0){
+    return -1;
+  }
+  if(argint(3,&flags)<0){
+    return -1;
+  }
+  if(argint(4,&fd)<0){
+    return -1;
+  }
+  if(argint(5,&offset)<0){
+    return -1;
+  }
+
+
+  struct proc*p = myproc();
+  struct file*f;
+  if(fd<0||fd>NOFILE||(f=p->ofile[fd])==0){
+    return -1;
+  }
+  if(flags == MAP_SHARED){
+    if((prot & PROT_READ) && (!f->readable))
+      return -1;
+    if((prot & PROT_WRITE) && (!f->writable))
+      return -1;
+  }
+  uint64 mapaddr = p->sz;
+  p->sz += length;
+  f= filedup(f);
+
+  int i=0;
+  for(;i<VMASIZE;++i){
+    if(p->vmas[i].valid==-1){
+      break;
+    }
+  }
+  if(i==VMASIZE){
+    return -1;
+  }
+  //lazy alloc
+  p->vmas[i].addr = mapaddr;
+  p->vmas[i].length = length;
+  p->vmas[i].prot=prot;
+  p->vmas[i].flags = flags;
+  p->vmas[i].fd=fd;
+  p->vmas[i].valid = 0;
+  p->vmas[i].file = f;
+  p->vmas[i].offset =offset;
+  return mapaddr;
+}
+
+uint64 sys_munmap(void){
+  uint64 addr;
+  uint64 length;
+  int i;
+  struct proc *p = myproc();
+  if(argaddr(0,&addr) < 0 || argaddr(1,&length) < 0)
+    return -1;
+
+  //get right vma
+  for(i = 0; i < VMASIZE; i++){
+    if(p->vmas[i].valid == 0){
+      uint64 start = p->vmas[i].addr;
+      uint64 end   = start + p->vmas[i].length;
+      if(addr >= start && addr < end){
+        break;
+      }
+    }
+  }
+  if(i == VMASIZE)
+    return -1;
+  uint64 sz;
+  for(sz = 0; sz < length; sz+=PGSIZE){
+    int mapped = walkaddr(p->pagetable,addr+sz);
+    //need write back to file?
+    //unmap always unmap from the start to end and PGSIZE aligned
+    //so it simplify our implemention
+    if(mapped){
+      if(p->vmas[i].flags == MAP_SHARED){
+        if(filewrite(p->vmas[i].file,addr+sz,PGSIZE) <= 0)
+          return -1;
+      }
+      uvmunmap(p->pagetable,PGROUNDDOWN(addr+sz),1,1);
+    }
+    p->vmas[i].file->off += sz;
+  }
+  //set vma
+  p->vmas[i].addr = addr+length;
+  p->vmas[i].length -= length;
+  p->sz -= length;
+
+  //all free
+  if(p->vmas[i].length == 0){
+    p->vmas[i].valid = -1;
+    fileclose(p->vmas[i].file);
+  }
+  return 0;
 }
