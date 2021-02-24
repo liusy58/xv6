@@ -138,13 +138,13 @@ e1000_recv(void)
   for (i = 0; i < RX_RING_SIZE; i++) {
     rdysends[i] = 0;
   }
-  i =index;
+  i = 0;
   while(index!=regs[E1000_RDH]){
     if((rx_ring[index].status & E1000_RXD_STAT_DD) == 0){
       break;
     }
     rx_mbufs[index]->len = rx_ring[index].length;
-    rdysends[index] = rx_mbufs[index];
+    rdysends[i++] = rx_mbufs[index];
     struct mbuf *newbuf = mbufalloc(0);
     rx_ring[index].addr = (uint64)newbuf->head;
     rx_mbufs[index] = newbuf;
@@ -152,12 +152,12 @@ e1000_recv(void)
     regs[E1000_RDT] = index;
     index = (index + 1) % RX_RING_SIZE;
   }
+  i=0;
   release(&e1000_lock);
   while(rdysends[i] != 0){
     net_rx(rdysends[i]);
     i = (i + 1) % RX_RING_SIZE;
   }
-
   return;
 }
 
