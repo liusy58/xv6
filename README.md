@@ -11,7 +11,7 @@ Thank Robert Morris and all my friends who helped me debug and encourage me to c
 - [x] Lab7
 - [x] Lab8
 - [x] Lab9
-
+- [x] Lab10
 
 
 ## Lab1 Xv6 and Unix utilities
