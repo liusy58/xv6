@@ -15,6 +15,32 @@ Thank Robert Morris and all my friends who helped me debug and encourage me to c
 - [x] Lab11
 
 
+# Notes of the source code
+
+## `sh.c`
+
+
+EXEC -> REDIR {aaa REDIR}^+
+     -> BLOCK
+
+
+REDIR -> '<' aaa
+      -> '>' aaa
+      -> '>>' aaa
+      -> 
+
+PIPE  -> EXEC {'|' PIPE}
+
+LINE  -> PIPE {'&'} {';' LINE}
+
+
+BLOCK -> '(' LINE ')' REDIR
+
+
+
+
+
+
 ## Lab1 Xv6 and Unix utilities
 
 
